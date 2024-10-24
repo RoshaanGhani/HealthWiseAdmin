@@ -126,7 +126,7 @@
                         <label for="questionType${questionCount}">Question Type</label>
                         <select id="questionType${questionCount}" onchange="changeQuestionType(${questionCount})">
                             <option value="multiple-choice">Multiple Choice</option>
-                            <option value="true-false">True/False</option>
+                            <option value="multiple-select">Multiple Select</option>
                             <option value="reorder-list">Reorder List</option>
                         </select>
                     </div>
@@ -162,14 +162,23 @@
                 choicesContainer.innerHTML = '';  // Clear existing choices
 
                 if (questionType === 'multiple-choice') {
+                    // Multiple choice: one correct answer
                     for (let i = 1; i <= numChoices; i++) {
                         choicesContainer.innerHTML += `
                             <input type="radio" name="answer${questionNumber}" value="${i}">
                             <input type="text" placeholder="Choice ${i}">
                         `;
                     }
+                } else if (questionType === 'multiple-select') {
+                    // Multiple select: more than one correct answer
+                    for (let i = 1; i <= numChoices; i++) {
+                        choicesContainer.innerHTML += `
+                            <input type="checkbox" name="answer${questionNumber}" value="${i}">
+                            <input type="text" placeholder="Choice ${i}">
+                        `;
+                    }
                 } else if (questionType === 'reorder-list') {
-                    // Add text inputs for the items
+                    // Reorder list: list items to reorder
                     for (let i = 1; i <= numChoices; i++) {
                         choicesContainer.innerHTML += `<input type="text" placeholder="Item ${i}">`;
                     }
@@ -189,18 +198,9 @@
                 const questionType = document.getElementById(`questionType${questionNumber}`).value;
                 const choicesContainer = document.getElementById(`choicesContainer${questionNumber}`);
 
-                if (questionType === 'true-false') {
-                    choicesContainer.innerHTML = `
-                        <input type="radio" name="answer${questionNumber}" value="true">
-                        <label>True</label>
-                        <input type="radio" name="answer${questionNumber}" value="false">
-                        <label>False</label>
-                    `;
-                    document.getElementById(`numChoices${questionNumber}`).disabled = true;
-                } else {
-                    document.getElementById(`numChoices${questionNumber}`).disabled = false;
-                    updateChoices(questionNumber); // Rebuild choices based on the new type
-                }
+                // Re-enable choices dropdown when needed
+                document.getElementById(`numChoices${questionNumber}`).disabled = false;
+                updateChoices(questionNumber); // Rebuild choices based on the new type
             };
 
             // Add the first question form by default
@@ -212,16 +212,24 @@
             // Publish the quiz
             document.getElementById('publishBtn').addEventListener('click', async () => {
                 const title = document.getElementById('title').value;
-                const startDate = document.getElementById('startDate').value;
-                const endDate = document.getElementById('endDate').value;
+                const startDateString = document.getElementById('startDate').value;
+                const endDateString = document.getElementById('endDate').value;
                 const createdBy = document.getElementById('createdBy').value;
+
+                // Convert date strings to JavaScript Date objects
+                const startDate = new Date(startDateString);
+                const endDate = new Date(endDateString);
+
+                // Convert Date objects to Firebase Timestamps
+                const startTimestamp = firebase.firestore.Timestamp.fromDate(startDate);
+                const endTimestamp = firebase.firestore.Timestamp.fromDate(endDate);
 
                 const quizRef = await db.collection('quizzes').add({
                     title,
-                    startDate,
-                    endDate,
+                    startDate: startTimestamp,  // Saving as Firebase Timestamp
+                    endDate: endTimestamp,      // Saving as Firebase Timestamp
                     createdBy,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(), // Automatically add timestamp
                 });
 
                 // Loop through questions and add them to Firebase
@@ -244,16 +252,18 @@
                                 correctAnswer = input.value;
                             }
                         });
-                    } else if (questionType === 'true-false') {
-                        const trueSelected = document.querySelector(`#choicesContainer${i} input[type="radio"][value="true"]`).checked;
-                        const falseSelected = document.querySelector(`#choicesContainer${i} input[type="radio"][value="false"]`).checked;
-
-                        choices = [
-                            { choice: "True", isCorrect: trueSelected },
-                            { choice: "False", isCorrect: falseSelected },
-                        ];
-
-                        correctAnswer = trueSelected ? "True" : "False";
+                    } else if (questionType === 'multiple-select') {
+                        const choiceInputs = document.querySelectorAll(`#choicesContainer${i} input[type="text"]`);
+                        choiceInputs.forEach((input, index) => {
+                            const isCorrect = document.querySelector(`#choicesContainer${i} input[type="checkbox"][value="${index + 1}"]`).checked;
+                            choices.push({
+                                choice: input.value,
+                                isCorrect: isCorrect
+                            });
+                            if (isCorrect) {
+                                correctAnswer = correctAnswer ? [...correctAnswer, input.value] : [input.value];
+                            }
+                        });
                     } else if (questionType === 'reorder-list') {
                         const reorderInputs = document.querySelectorAll(`#choicesContainer${i} input[type="text"]`);
                         reorderInputs.forEach((input) => {

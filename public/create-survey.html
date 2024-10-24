@@ -71,6 +71,12 @@
             padding: 10px;
             margin-bottom: 10px;
         }
+
+        .error-message {
+            color: red;
+            margin-top: 5px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -86,6 +92,7 @@
                 <input type="text" id="createdBy" name="createdBy" placeholder="Created By" required>
                 <button type="button" id="publishBtn">Publish Survey</button>
             </div>
+            <div id="dateError" class="error-message">End date must be after start date.</div>
         </div>
 
         <!-- Questions will be added dynamically here -->
@@ -111,6 +118,11 @@
         const db = firebase.firestore();
 
         let questionCount = 0; // Track the number of questions
+
+        // Function to validate dates
+        function validateDates(startDate, endDate) {
+            return startDate < endDate;
+        }
 
         // Function to add a new question form dynamically
         function addQuestion() {
@@ -190,45 +202,76 @@
         // Publish the survey
         document.getElementById('publishBtn').addEventListener('click', async () => {
             const title = document.getElementById('title').value;
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
+            const startDateString = document.getElementById('startDate').value;
+            const endDateString = document.getElementById('endDate').value;
             const createdBy = document.getElementById('createdBy').value;
 
-            // Add survey metadata to Firebase
-            const surveyRef = await db.collection('surveys').add({
-                title,
-                startDate,
-                endDate,
-                createdBy,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            });
+            // Convert string dates to Date objects
+            const startDateObj = new Date(startDateString);
+            const endDateObj = new Date(endDateString);
 
-            // Loop through questions and add them to Firebase
-            for (let i = 1; i <= questionCount; i++) {
-                const content = document.getElementById(`content${i}`).value;
-                const questionType = document.getElementById(`questionType${i}`).value;
-
-                let choices = [];
-
-                if (questionType === 'multiple-choice') {
-                    const choiceInputs = document.querySelectorAll(`#choicesContainer${i} input[type="text"]`);
-                    choiceInputs.forEach((input) => {
-                        choices.push(input.value);
-                    });
-                } else if (questionType === 'true-false') {
-                    choices = ["True", "False"];  // For true/false, the choices are predefined
-                }
-
-                // Add question to the survey's questions sub-collection in Firebase
-                await surveyRef.collection('questions').add({
-                    content,
-                    questionType,
-                    choices,  // Store the choices for multiple choice or true/false
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                });
+            // Validate dates
+            if (!validateDates(startDateObj, endDateObj)) {
+                document.getElementById('dateError').style.display = 'block';
+                return;
+            } else {
+                document.getElementById('dateError').style.display = 'none';
             }
 
-            alert('Survey published successfully!');
+            // Convert to Firebase Timestamps
+            const startDate = firebase.firestore.Timestamp.fromDate(startDateObj);
+            const endDate = firebase.firestore.Timestamp.fromDate(endDateObj);
+
+            try {
+                // Add survey metadata to Firebase
+                const surveyRef = await db.collection('surveys').add({
+                    title,
+                    startDate,
+                    endDate,
+                    createdBy,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                });
+
+                // Loop through questions and add them to Firebase
+                for (let i = 1; i <= questionCount; i++) {
+                    const content = document.getElementById(`content${i}`).value;
+                    const questionType = document.getElementById(`questionType${i}`).value;
+
+                    let choices = [];
+
+                    if (questionType === 'multiple-choice') {
+                        const choiceInputs = document.querySelectorAll(`#choicesContainer${i} input[type="text"]`);
+                        choiceInputs.forEach((input) => {
+                            choices.push(input.value);
+                        });
+                    } else if (questionType === 'true-false') {
+                        choices = ["True", "False"];  // For true/false, the choices are predefined
+                    }
+
+                    // Add question to the survey's questions sub-collection in Firebase
+                    await surveyRef.collection('questions').add({
+                        content,
+                        questionType,
+                        choices,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                }
+
+                alert('Survey published successfully!');
+                
+                // Optional: Reset form after successful submission
+                document.getElementById('title').value = '';
+                document.getElementById('startDate').value = '';
+                document.getElementById('endDate').value = '';
+                document.getElementById('createdBy').value = '';
+                document.getElementById('questionsContainer').innerHTML = '';
+                questionCount = 0;
+                addQuestion(); // Add back the first question
+
+            } catch (error) {
+                console.error("Error publishing survey:", error);
+                alert('Error publishing survey. Please try again.');
+            }
         });
     </script>
 </body>
