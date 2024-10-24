@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Previous Surveys</title>
+  <style>
+    /* General styles */
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f9f9f9;
+      padding: 20px;
+      margin: 0;
+    }
+
+    h1, h2 {
+      color: #333;
+    }
+
+    ul {
+      padding: 0;
+      margin: 0;
+    }
+
+    li {
+      list-style-type: none;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    /* Survey Actions */
+    .survey-actions button {
+      padding: 10px 20px;
+      margin-left: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .survey-actions button:hover {
+      background-color: #0056b3;
+    }
+
+    /* Charts Section */
+    .charts {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 20px;
+    }
+
+    .chart {
+      width: 45%;
+    }
+
+    canvas {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Text Responses Section */
+    .text-responses {
+      margin-top: 30px;
+    }
+
+    .text-responses h2 {
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    #openEndedResponses {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    #openEndedResponses li {
+      background-color: #fff;
+      padding: 10px;
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+      border-radius: 5px;
+    }
+
+    /* Survey List */
+    .survey-list ul {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    .survey-list li {
+      background-color: #ffffff;
+      padding: 15px;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .survey-list li:hover {
+      background-color: #f1f1f1;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .charts {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .chart {
+        width: 100%;
+        margin-bottom: 20px;
+      }
+
+      .survey-actions button {
+        margin-top: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Previous Surveys</h1>
+  </div>
+
+  <div class="survey-list">
+    <ul id="surveyList"></ul>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js"></script>
+
+  <script>
+    // Helper to get query parameters from the URL
+    function getQueryParam(param) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get(param);
+    }
+
+    // Load survey overview
+    async function loadSurveyOverview() {
+      const surveyId = getQueryParam('surveyId');
+      let surveysRef = db.collection('surveys');
+
+      if (surveyId) {
+        const surveyDoc = await surveysRef.doc(surveyId).get();
+        if (!surveyDoc.exists) {
+          alert('Survey not found');
+          return;
+        }
+        const surveyData = surveyDoc.data();
+        displaySurvey(surveyData, surveyId);
+      } else {
+        const snapshot = await surveysRef.orderBy('createdAt', 'desc').limit(1).get();
+        if (snapshot.empty) {
+          alert('No surveys found');
+          return;
+        }
+        const latestSurvey = snapshot.docs[0].data();
+        const latestSurveyId = snapshot.docs[0].id;
+        displaySurvey(latestSurvey, latestSurveyId);
+      }
+    }
+
+    // Display survey details
+    function displaySurvey(survey, surveyId) {
+      document.getElementById('surveyTitle').innerText = survey.title;
+      document.getElementById('surveyDate').innerText = 
+        `Published on: ${new Date(survey.createdAt.seconds * 1000).toLocaleString()}`;
+      loadSurveyResponses(surveyId);
+    }
+
+    // Load survey responses
+    async function loadSurveyResponses(surveyId) {
+      const questionsSnapshot = await db.collection('surveys')
+        .doc(surveyId)
+        .collection('questions')
+        .get();
+
+      questionsSnapshot.forEach(async (questionDoc, index) => {
+        const question = questionDoc.data();
+        
+        if (index === 0) {
+          const stats = await getQuestionStats(surveyId, questionDoc.id);
+          renderPieChart(stats);
+        } else if (index === 1) {
+          const stats = await getQuestionStats(surveyId, questionDoc.id);
+          renderBarChart(stats);
+        } else {
+          const textResponses = await getTextResponses(surveyId, questionDoc.id);
+          renderTextResponses(textResponses);
+        }
+      });
+    }
+
+    // Load previous surveys
+    async function loadPreviousSurveys() {
+      const surveysRef = collection(db, "surveys");
+      const snapshot = await getDocs(surveysRef);
+
+      const surveyList = document.getElementById('surveyList');
+      surveyList.innerHTML = '';
+
+      if (snapshot.empty) {
+        surveyList.innerHTML = '<li>No previous surveys found.</li>';
+        return;
+      }
+
+      snapshot.forEach(doc => {
+        const survey = doc.data();
+        const li = document.createElement('li');
+        li.textContent = `${survey.title} - Published on: ${new Date(survey.createdAt.seconds * 1000).toLocaleString()}`;
+        
+        li.onclick = () => {
+          window.location.href = `/survey-overview.html?surveyId=${doc.id}`;
+        };
+
+        surveyList.appendChild(li);
+      });
+    }
+
+    // Initialize page based on current route
+    window.onload = () => {
+      const currentPage = window.location.pathname;
+
+      if (currentPage.includes('survey-overview.html')) {
+        loadSurveyOverview();
+      } else if (currentPage.includes('previous-surveys.html')) {
+        loadPreviousSurveys();
+      }
+    };
+  </script>
+</body>
+</html>

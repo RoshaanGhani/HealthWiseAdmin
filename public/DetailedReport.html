@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detailed Quiz Report</title>
+    <!-- Inline CSS for styling -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        p {
+            font-size: 14px;
+            color: #555;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 16px;
+        }
+
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        #branchReportTable tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1 id="quizTitle">Quiz Title</h1>
+        <p id="quizDate">Published on: </p>
+
+        <!-- Quiz Report Table -->
+        <h2>Quiz Report Summary</h2>
+        <table id="quizReportTable">
+            <thead>
+                <tr>
+                    <th>No. of Users</th>
+                    <th>Average Score</th>
+                    <th>Average Time Taken</th>
+                    <th>% Passed</th>
+                    <th>% Failed</th>
+                    <th>Highest Score</th>
+                    <th>Lowest Score</th>
+                    <th>Average Score per Branch</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td id="numUsers"></td>
+                    <td id="avgScore"></td>
+                    <td id="avgTime"></td>
+                    <td id="percentPassed"></td>
+                    <td id="percentFailed"></td>
+                    <td id="highestScore"></td>
+                    <td id="lowestScore"></td>
+                    <td id="branchAvgScore"></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- Branch-wise Average Score Table -->
+        <h2>Average Score per Branch</h2>
+        <table id="branchReportTable">
+            <thead>
+                <tr>
+                    <th>Branch</th>
+                    <th>Average Score</th>
+                </tr>
+            </thead>
+            <tbody id="branchTableBody">
+                <!-- Branch scores will be dynamically populated here -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- JavaScript to connect to Firestore and populate data -->
+    <script>
+        // Firebase configuration (replace with your Firebase config)
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Fetch quiz data from Firestore
+        async function fetchQuizData() {
+            const quizId = "quiz-id-here";  // Replace with actual quiz ID
+
+            // Get the quiz metadata
+            const quizDoc = await db.collection('quizzes').doc(quizId).get();
+            const quizData = quizDoc.data();
+
+            document.getElementById('quizTitle').innerText = quizData.title;
+            document.getElementById('quizDate').innerText = `Published on: ${new Date(quizData.createdAt.seconds * 1000).toLocaleString()}`;
+
+            // Fetch quiz statistics
+            const statsSnapshot = await db.collection('quizStats').doc(quizId).get();
+            const stats = statsSnapshot.data();
+
+            document.getElementById('numUsers').innerText = stats.numUsers;
+            document.getElementById('avgScore').innerText = stats.avgScore + "%";
+            document.getElementById('avgTime').innerText = stats.avgTime;
+            document.getElementById('percentPassed').innerText = stats.percentPassed + "%";
+            document.getElementById('percentFailed').innerText = stats.percentFailed + "%";
+            document.getElementById('highestScore').innerText = stats.highestScore + "%";
+            document.getElementById('lowestScore').innerText = stats.lowestScore + "%";
+
+            // Calculate branch average scores
+            const branchScores = stats.branches;
+            const branchAvgScore = Object.values(branchScores).reduce((sum, score) => sum + score, 0) / Object.values(branchScores).length;
+
+            document.getElementById('branchAvgScore').innerText = branchAvgScore.toFixed(2) + "%";
+
+            // Populate branch-wise average score table
+            const branchTableBody = document.getElementById('branchTableBody');
+            for (const branch in branchScores) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${branch}</td>
+                    <td>${branchScores[branch]}%</td>
+                `;
+                branchTableBody.appendChild(row);
+            }
+        }
+
+        // Call the function to fetch data on page load
+        fetchQuizData();
+    </script>
+</body>
+</html>

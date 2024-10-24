@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Creation System</title>
+    <style>
+        .container {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .form-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .quiz-header {
+            display: flex;
+            gap: 20px;
+            justify-content: space-between;
+        }
+
+        .quiz-header input {
+            padding: 10px;
+            flex: 1;
+        }
+
+        .question-section {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .question-fields {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .choices-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .question-marks {
+            margin: 10px 0;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Quiz Management System</h1>
+
+        <!-- Quiz Creation Form -->
+        <div class="form-section">
+            <div class="quiz-header">
+                <input type="text" id="title" name="title" placeholder="Quiz Title" required>
+                <input type="datetime-local" id="startDate" name="startDate" required>
+                <input type="datetime-local" id="endDate" name="endDate" required>
+                <input type="text" id="createdBy" name="createdBy" placeholder="Created By" required>
+                <button type="button" id="publishBtn">Publish Quiz</button>
+            </div>
+        </div>
+
+        <!-- Questions will be added dynamically here -->
+        <div id="questionsContainer"></div>
+
+        <!-- Button to add more questions -->
+        <button type="button" id="addQuestionBtn">Add Question</button>
+    </div>
+
+    <script>
+        (function () {
+            // Firebase configuration (replace with your Firebase settings if needed)
+            const firebaseConfig = {
+                apiKey: "AIzaSyCrelCatMKLFsyEPOWitxzKamUUpzysqcQ",
+                authDomain: "healthwise-app-fc27f.firebaseapp.com",
+                projectId: "healthwise-app-fc27f",
+                storageBucket: "healthwise-app-fc27f.appspot.com",
+                messagingSenderId: "50687506324",
+                appId: "1:50687506324:web:2d4b22c652bb0535060181",
+                measurementId: "G-WDTFFJ2TH2"
+            };
+
+            // Initialize Firebase
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.firestore();
+
+            let questionCount = 0; // Keep track of the number of questions
+
+            // Function to add a new question form dynamically
+            function addQuestion() {
+                questionCount++;
+
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'form-section question-section';
+                questionDiv.innerHTML = `
+                    <h3>Question ${questionCount}</h3>
+                    <div class="question-fields">
+                        <label for="questionType${questionCount}">Question Type</label>
+                        <select id="questionType${questionCount}" onchange="changeQuestionType(${questionCount})">
+                            <option value="multiple-choice">Multiple Choice</option>
+                            <option value="true-false">True/False</option>
+                            <option value="reorder-list">Reorder List</option>
+                        </select>
+                    </div>
+
+                    <div class="question-marks">
+                        <label for="marks${questionCount}">Marks</label>
+                        <input type="number" id="marks${questionCount}" placeholder="Enter marks" min="1" required>
+                    </div>
+
+                    <textarea id="content${questionCount}" placeholder="Type question here..." rows="3"></textarea>
+
+                    <div id="choicesContainer${questionCount}" class="choices-section"></div>
+                    <label for="numChoices${questionCount}">Number of Choices:</label>
+                    <select id="numChoices${questionCount}" onchange="updateChoices(${questionCount})">
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                    </select>
+                `;
+
+                document.getElementById('questionsContainer').appendChild(questionDiv);
+
+                // Trigger the default setup for multiple choice
+                updateChoices(questionCount);
+            }
+
+            // Update the choices based on dropdown selection
+            window.updateChoices = function (questionNumber) {
+                const questionType = document.getElementById(`questionType${questionNumber}`).value;
+                const numChoices = document.getElementById(`numChoices${questionNumber}`).value;
+                const choicesContainer = document.getElementById(`choicesContainer${questionNumber}`);
+                choicesContainer.innerHTML = '';  // Clear existing choices
+
+                if (questionType === 'multiple-choice') {
+                    for (let i = 1; i <= numChoices; i++) {
+                        choicesContainer.innerHTML += `
+                            <input type="radio" name="answer${questionNumber}" value="${i}">
+                            <input type="text" placeholder="Choice ${i}">
+                        `;
+                    }
+                } else if (questionType === 'reorder-list') {
+                    // Add text inputs for the items
+                    for (let i = 1; i <= numChoices; i++) {
+                        choicesContainer.innerHTML += `<input type="text" placeholder="Item ${i}">`;
+                    }
+
+                    // Add a section to specify the correct order of the items
+                    choicesContainer.innerHTML += `
+                        <div class="correct-order">
+                            <p>Correct Order (enter numbers separated by commas, e.g., "1,2,3"):</p>
+                            <input type="text" id="correctOrder${questionNumber}" placeholder="1,2,3">
+                        </div>
+                    `;
+                }
+            };
+
+            // Change question layout based on type
+            window.changeQuestionType = function (questionNumber) {
+                const questionType = document.getElementById(`questionType${questionNumber}`).value;
+                const choicesContainer = document.getElementById(`choicesContainer${questionNumber}`);
+
+                if (questionType === 'true-false') {
+                    choicesContainer.innerHTML = `
+                        <input type="radio" name="answer${questionNumber}" value="true">
+                        <label>True</label>
+                        <input type="radio" name="answer${questionNumber}" value="false">
+                        <label>False</label>
+                    `;
+                    document.getElementById(`numChoices${questionNumber}`).disabled = true;
+                } else {
+                    document.getElementById(`numChoices${questionNumber}`).disabled = false;
+                    updateChoices(questionNumber); // Rebuild choices based on the new type
+                }
+            };
+
+            // Add the first question form by default
+            addQuestion();
+
+            // Add event listener to add more questions
+            document.getElementById('addQuestionBtn').addEventListener('click', addQuestion);
+
+            // Publish the quiz
+            document.getElementById('publishBtn').addEventListener('click', async () => {
+                const title = document.getElementById('title').value;
+                const startDate = document.getElementById('startDate').value;
+                const endDate = document.getElementById('endDate').value;
+                const createdBy = document.getElementById('createdBy').value;
+
+                const quizRef = await db.collection('quizzes').add({
+                    title,
+                    startDate,
+                    endDate,
+                    createdBy,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                });
+
+                // Loop through questions and add them to Firebase
+                for (let i = 1; i <= questionCount; i++) {
+                    const content = document.getElementById(`content${i}`).value;
+                    const questionType = document.getElementById(`questionType${i}`).value;
+                    const marks = document.getElementById(`marks${i}`).value;
+
+                    let choices = [];
+                    let correctAnswer = null;
+
+                    if (questionType === 'multiple-choice') {
+                        const choiceInputs = document.querySelectorAll(`#choicesContainer${i} input[type="text"]`);
+                        choiceInputs.forEach((input, index) => {
+                            choices.push({
+                                choice: input.value,
+                                isCorrect: document.querySelector(`#choicesContainer${i} input[type="radio"][value="${index + 1}"]`).checked,
+                            });
+                            if (document.querySelector(`#choicesContainer${i} input[type="radio"][value="${index + 1}"]`).checked) {
+                                correctAnswer = input.value;
+                            }
+                        });
+                    } else if (questionType === 'true-false') {
+                        const trueSelected = document.querySelector(`#choicesContainer${i} input[type="radio"][value="true"]`).checked;
+                        const falseSelected = document.querySelector(`#choicesContainer${i} input[type="radio"][value="false"]`).checked;
+
+                        choices = [
+                            { choice: "True", isCorrect: trueSelected },
+                            { choice: "False", isCorrect: falseSelected },
+                        ];
+
+                        correctAnswer = trueSelected ? "True" : "False";
+                    } else if (questionType === 'reorder-list') {
+                        const reorderInputs = document.querySelectorAll(`#choicesContainer${i} input[type="text"]`);
+                        reorderInputs.forEach((input) => {
+                            choices.push({ item: input.value });
+                        });
+
+                        const correctOrderInput = document.getElementById(`correctOrder${i}`).value;
+                        const correctOrder = correctOrderInput.split(',').map(num => parseInt(num.trim(), 10));
+                        correctAnswer = correctOrder;
+                    }
+
+                    await quizRef.collection('questions').add({
+                        content,
+                        questionType,
+                        choices,
+                        correctAnswer,
+                        marks: parseInt(marks, 10),
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                }
+
+                alert('Quiz published successfully!');
+            });
+        })();
+    </script>
+</body>
+</html>
