@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Survey Overview</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f9f9f9;
+      padding: 20px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .survey-info h1 {
+      margin: 0;
+    }
+
+    .survey-actions button {
+      padding: 10px 20px;
+      margin-left: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    .survey-actions button:hover {
+      background-color: #0056b3;
+    }
+
+    .charts {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 20px;
+    }
+
+    .chart {
+      width: 45%;
+    }
+
+    #openEndedResponses {
+      margin-top: 20px;
+      list-style-type: none;
+      padding: 0;
+    }
+
+    #openEndedResponses li {
+      background-color: #fff;
+      padding: 10px;
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="header">
+    <div class="survey-info">
+      <h1 id="surveyTitle">Survey Title</h1>
+      <p id="surveyDate">Published on: </p>
+    </div>
+    <div class="survey-actions">
+      <button id="createSurveyBtn">Create New Survey</button>
+      <button id="previousSurveysBtn">Previous Surveys</button>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chart">
+      <canvas id="question1PieChart"></canvas>
+    </div>
+    <div class="chart">
+      <canvas id="question2BarChart"></canvas>
+    </div>
+  </div>
+
+  <div class="text-responses">
+    <h2>Open-ended Responses</h2>
+    <ul id="openEndedResponses"></ul>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js";
+    import { getFirestore, collection, doc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCrelCatMKLFsyEPOWitxzKamUUpzysqcQ",
+      authDomain: "healthwise-app-fc27f.firebaseapp.com",
+      projectId: "healthwise-app-fc27f",
+      storageBucket: "healthwise-app-fc27f.appspot.com",
+      messagingSenderId: "50687506324",
+      appId: "1:50687506324:web:2d4b22c652bb0535060181",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Load the most recent survey data
+    async function loadSurveyOverview() {
+      const surveysRef = collection(db, "surveys");
+      const snapshot = await getDocs(surveysRef);
+
+      if (snapshot.empty) {
+        alert('No surveys found');
+        return;
+      }
+
+      // Assume we take the most recent survey by timestamp
+      const latestSurvey = snapshot.docs[0].data();
+      const surveyId = snapshot.docs[0].id;
+
+      // Display survey title and date
+      document.getElementById('surveyTitle').innerText = latestSurvey.title;
+      document.getElementById('surveyDate').innerText = `Published on: ${new Date(latestSurvey.createdAt.seconds * 1000).toLocaleString()}`;
+
+      // Load the survey's questions and responses
+      await loadSurveyResponses(surveyId);
+    }
+
+    // Load survey responses and display statistics
+    async function loadSurveyResponses(surveyId) {
+      const questionsRef = collection(db, "surveys", surveyId, "questions");
+      const questionsSnapshot = await getDocs(questionsRef);
+
+      let question1Data = {};
+      let question2Data = {};
+      const openEndedResponses = [];
+
+      // Process survey questions
+      questionsSnapshot.forEach(async (questionDoc, index) => {
+        const question = questionDoc.data();
+        const questionId = questionDoc.id;
+
+        if (index === 0) {
+          // Question 1: Pie chart (Multiple Choice)
+          question1Data = await getQuestionStats(surveyId, questionId);
+          renderPieChart(question1Data);
+        } else if (index === 1) {
+          // Question 2: Bar chart (Multiple Choice)
+          question2Data = await getQuestionStats(surveyId, questionId);
+          renderBarChart(question2Data);
+        } else {
+          // Open-ended question (Text Response)
+          const textResponses = await getTextResponses(surveyId, questionId);
+          openEndedResponses.push(...textResponses);
+          renderTextResponses(openEndedResponses);
+        }
+      });
+    }
+
+    // Get stats for multiple choice questions
+    async function getQuestionStats(surveyId, questionId) {
+      const answersRef = collection(db, "surveys", surveyId, "questions", questionId, "answers");
+      const answersSnapshot = await getDocs(answersRef);
+
+      const stats = {};
+      answersSnapshot.forEach((doc) => {
+        const answer = doc.data();
+        stats[answer.content] = (stats[answer.content] || 0) + 1;
+      });
+
+      return stats;
+    }
+
+    // Get text responses for open-ended questions
+    async function getTextResponses(surveyId, questionId) {
+      const responsesRef = collection(db, "surveyResponses");
+      const responsesSnapshot = await getDocs(responsesRef);
+
+      const textResponses = [];
+      responsesSnapshot.forEach((doc) => {
+        const response = doc.data();
+        if (response.questionId === questionId && response.comment) {
+          textResponses.push(response.comment);
+        }
+      });
+
+      return textResponses;
+    }
+
+    // Render Pie Chart for Question 1
+    function renderPieChart(data) {
+      const ctx = document.getElementById('question1PieChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: Object.keys(data),
+          datasets: [{
+            label: 'Question 1 Stats',
+            data: Object.values(data),
+            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'],
+          }]
+        }
+      });
+    }
+
+    // Render Bar Chart for Question 2
+    function renderBarChart(data) {
+      const ctx = document.getElementById('question2BarChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(data),
+          datasets: [{
+            label: 'Question 2 Stats',
+            data: Object.values(data),
+            backgroundColor: ['#36A2EB'],
+          }]
+        }
+      });
+    }
+
+    // Render Text Responses for Open-ended Questions
+    function renderTextResponses(responses) {
+      const responseList = document.getElementById('openEndedResponses');
+      responseList.innerHTML = '';  // Clear old responses
+
+      responses.forEach((response) => {
+        const li = document.createElement('li');
+        li.textContent = response;
+        responseList.appendChild(li);
+      });
+    }
+
+    // Navigation buttons
+    document.getElementById('createSurveyBtn').onclick = () => {
+      window.location.href = '/create-survey.html';
+    };
+
+    document.getElementById('previousSurveysBtn').onclick = () => {
+      window.location.href = '/previous-surveys.html';
+    };
+
+    // Load survey data on page load
+    window.onload = loadSurveyOverview;
+  </script>
+</body>
+</html>
